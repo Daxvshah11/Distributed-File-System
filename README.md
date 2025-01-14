@@ -1,1 +1,7 @@
-# Distributed-File-System
+# DISTRIBUTED FILE SYSTEM
+
+## `Assumptions`
+
+## `Features`
+
+### Feature 1
