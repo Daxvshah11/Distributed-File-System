@@ -76,7 +76,6 @@ void opSearchSS(map<int, string> &storedChunks);
 
 void printFileData(string fileData);
 pair<int, string> readFileInChunks(const string &fileName, const string &fileAddress, vector<string> &fileChunks);
-bool isWordBoundary(char ch);
 pair<int, vector<size_t>> findWordOccurrences(const string &chunkContent, int chunkOffset, const string &word);
 bool isCompleteMatch(const string &chunk, const string &word, size_t pos);
 bool isPrefixMatch(const string &chunk, const string &word, size_t pos);
@@ -916,7 +915,7 @@ void opRetrieveSS(map<int, string> &storedChunks)
 
 */
 
-bool isCompleteMatch(const string &chunk, const string &word, size_t pos)
+bool isCompleteMatch(const string &chunk, const string &word, size_t pos, char &prevChunkLastChar)
 {
     if (pos + word.length() > chunk.length())
         return false;
@@ -931,6 +930,20 @@ bool isCompleteMatch(const string &chunk, const string &word, size_t pos)
             break;
         }
         temp1 += chunk[pos + i];
+    }
+
+    // also making sure that the word begins exactly from pos
+    if (pos > 0 && chunk[pos - 1] != '\0' && chunk[pos - 1] != '\n' && chunk[pos - 1] != ' ')
+    {
+        return false;
+    }
+    else if (pos == 0)
+    {
+        // checking if end byte of the previous chunk is not a valid letter
+        if (prevChunkLastChar != '\0' && prevChunkLastChar != '\n' && prevChunkLastChar != ' ')
+        {
+            return false;
+        }
     }
 
     // also making sure that the word is ending after it
@@ -987,7 +1000,7 @@ bool isSuffixMatch(const string &chunk, const string &word, int prevMatchLength)
     return false;
 }
 
-vector<SearchResult> searchInChunk(const string &chunk, const string &searchWord, const int &chunkOffset, int &prevMatchLength)
+vector<SearchResult> searchInChunk(const string &chunk, const string &searchWord, const int &chunkOffset, int &prevMatchLength, char &prevChunkLastChar)
 {
     vector<SearchResult> results;
 
@@ -1017,7 +1030,7 @@ vector<SearchResult> searchInChunk(const string &chunk, const string &searchWord
     for (size_t i = 0; i < chunk.length() - 1; i++)
     {
         // checking for full match
-        if (isCompleteMatch(chunk, searchWord, i))
+        if (isCompleteMatch(chunk, searchWord, i, prevChunkLastChar))
         {
             SearchResult result = {
                 chunkOffset + static_cast<int>(i),
@@ -1058,6 +1071,7 @@ pair<int, string> opSearchMS(string fileName, const string &word, map<string, Fi
     // iterating over all chunks
     vector<int> allOffsets;
     int prevMatchLength = 0;
+    char prevChunkLastChar = '\0';
     for (int i = 0; i < fileMD.numChunks; i++)
     {
         // getting chunk ID & firstOffset
@@ -1091,8 +1105,15 @@ pair<int, string> opSearchMS(string fileName, const string &word, map<string, Fi
                 // sending previous match length
                 MPI_Send(&prevMatchLength, 1, MPI_INT, nodeRank, SEARCH_REQUEST, MPI_COMM_WORLD);
 
-                // resetting prevMatchLength for this chunk
+                // sending previous chunk last character
+                MPI_Send(&prevChunkLastChar, 1, MPI_CHAR, nodeRank, SEARCH_REQUEST, MPI_COMM_WORLD);
+
+                // resetting prevMatchLength & prevChunkLastChar for this chunk
                 prevMatchLength = 0;
+                prevChunkLastChar = '\0';
+
+                // receiving last char of chunk
+                MPI_Recv(&prevChunkLastChar, 1, MPI_CHAR, nodeRank, SEARCH_REQUEST, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
                 // receiving size of search results
                 int resultSize;
@@ -1178,15 +1199,21 @@ void opSearchSS(map<int, string> &storedChunks)
     int chunkOffset;
     MPI_Recv(&chunkOffset, 1, MPI_INT, 0, SEARCH_REQUEST, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-    // receiving previous match length
+    // receiving previous match length & previous chunk last character
     int prevMatchLength;
+    char prevChunkLastChar;
     MPI_Recv(&prevMatchLength, 1, MPI_INT, 0, SEARCH_REQUEST, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    MPI_Recv(&prevChunkLastChar, 1, MPI_CHAR, 0, SEARCH_REQUEST, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
     // getting data of the chunk
     string chunkContent = storedChunks[chunkID];
 
     // handling the search
-    vector<SearchResult> results = searchInChunk(chunkContent, word, chunkOffset, prevMatchLength);
+    vector<SearchResult> results = searchInChunk(chunkContent, word, chunkOffset, prevMatchLength, prevChunkLastChar);
+
+    // sending last char of chunk
+    char lastChar = chunkContent[CHUNK_SIZE - 1];
+    MPI_Send(&lastChar, 1, MPI_CHAR, 0, SEARCH_REQUEST, MPI_COMM_WORLD);
 
     // sending size of search results
     int resultSize = results.size();
