@@ -65,7 +65,7 @@ struct SearchResult
 void processMetadataServer(int numProcesses);
 void processStorageNode(int myRank);
 
-pair<int, string> opUploadMS(long long int &lastChunkID, string fileName, string fileAddress, map<string, FileMetadata> &metadata, unordered_set<int> &activeNodes, set<pair<int, int>> &loadPerChunk);
+pair<int, string> opUploadMS(long long int &lastChunkID, string fileName, string fileAddress, map<string, FileMetadata> &metadata, unordered_set<int> &activeNodes, set<pair<int, int>> &loadPerNode);
 pair<int, string> opRetrieveMS(string fileName, map<string, FileMetadata> &metadata, unordered_set<int> &activeNodes);
 pair<int, string> opSearchMS(string fileName, const string &word, map<string, FileMetadata> &metadata, unordered_set<int> &activeNodes);
 pair<int, string> opListFileMS(string fileName, map<string, FileMetadata> &metadata, unordered_set<int> &activeNodes);
@@ -260,11 +260,11 @@ void processMetadataServer(int numProcesses)
     map<string, FileMetadata> metadata; // (fileName, FileMetadata)
     unordered_set<int> activeNodes;
     long long int lastChunkID = 0;
-    set<pair<int, int>> loadPerChunk; // (load, chunkID)
+    set<pair<int, int>> loadPerNode; // (load, nodeRank)
 
-    // initializing loadPerChunk
+    // initializing loadPerNode
     for (int i = 1; i < numProcesses; i++)
-        loadPerChunk.insert({0, i});
+        loadPerNode.insert({0, i});
 
     // updating active nodes
     for (int i = 1; i < numProcesses; i++)
@@ -335,7 +335,7 @@ void processMetadataServer(int numProcesses)
             }
 
             // handling the op
-            pair<int, string> retVal = opUploadMS(lastChunkID, fileName, fileAddress, metadata, activeNodes, loadPerChunk);
+            pair<int, string> retVal = opUploadMS(lastChunkID, fileName, fileAddress, metadata, activeNodes, loadPerNode);
             cout << retVal.first << endl;
 
             // listing file if uploaded successfully
@@ -626,7 +626,7 @@ void processStorageNode(int myRank)
 
 */
 
-pair<int, string> opUploadMS(long long int &lastChunkID, string fileName, string fileAddress, map<string, FileMetadata> &metadata, unordered_set<int> &activeNodes, set<pair<int, int>> &loadPerChunk)
+pair<int, string> opUploadMS(long long int &lastChunkID, string fileName, string fileAddress, map<string, FileMetadata> &metadata, unordered_set<int> &activeNodes, set<pair<int, int>> &loadPerNode)
 {
     // checking if already present
     if (metadata.find(fileName) != metadata.end())
@@ -659,9 +659,16 @@ pair<int, string> opUploadMS(long long int &lastChunkID, string fileName, string
         pair<int, int> tempPair;
         for (int j = 0; j < totalReplicaNodes; j++)
         {
-            // getting first pair from loadPerChunk & removing it
-            tempPair = *loadPerChunk.begin();
-            loadPerChunk.erase(loadPerChunk.begin());
+            // getting first pair from loadPerNode, which is active too & removing it
+            for (auto it = loadPerNode.begin(); it != loadPerNode.end(); it++)
+            {
+                if (activeNodes.find(it->second) != activeNodes.end())
+                {
+                    tempPair = *it;
+                    loadPerNode.erase(it);
+                    break;
+                }
+            }
 
             // storing
             loads[j] = tempPair;
@@ -691,8 +698,8 @@ pair<int, string> opUploadMS(long long int &lastChunkID, string fileName, string
             // incrementing load
             loads[j].first++;
 
-            // adding pair back to loadPerChunk
-            loadPerChunk.insert(loads[j]);
+            // adding pair back to loadPerNode
+            loadPerNode.insert(loads[j]);
         }
 
         // incrementing last chunk ID
@@ -1009,7 +1016,7 @@ bool isCompleteMatch(const string &chunk, const string &word, size_t pos, char &
     }
 
     // also making sure that the word is ending after it
-    if (word.length() < CHUNK_SIZE && chunk[pos + word.length()] != '\0' && chunk[pos + word.length()] != '\n' && chunk[pos + word.length()] != ' ')
+    if ((word.length() < CHUNK_SIZE) && chunk[pos + word.length()] != '\0' && chunk[pos + word.length()] != '\n' && chunk[pos + word.length()] != ' ')
     {
         return false;
     }
@@ -1031,7 +1038,10 @@ bool isPrefixMatch(const string &chunk, const string &word, size_t pos)
 {
     if (pos >= chunk.length())
         return false;
-    size_t remainingChars = chunk.length() - pos - 1;
+    int chunkSize = chunk.length();
+    if (chunkSize == CHUNK_SIZE + 1)
+        chunkSize--;
+    size_t remainingChars = chunkSize - pos;
     string temp1 = chunk.substr(pos, remainingChars);
     temp1 += '\0';
     string temp2 = word.substr(0, remainingChars);
@@ -1098,7 +1108,10 @@ vector<SearchResult> searchInChunk(const string &chunk, const string &searchWord
     }
 
     // searching for full matches & potential across chunk matches
-    for (size_t i = 0; i < chunk.length() - 1; i++)
+    int chunkSize = chunk.length();
+    if (chunkSize == CHUNK_SIZE + 1)
+        chunkSize--;
+    for (size_t i = 0; i < chunkSize; i++)
     {
         // checking for full match
         if (isCompleteMatch(chunk, searchWord, i, prevChunkLastChar))
@@ -1217,6 +1230,13 @@ pair<int, string> opSearchMS(string fileName, const string &word, map<string, Fi
 
                             // updating prevMatchLength
                             prevMatchLength = matchLength;
+
+                            // checking if its the last chunk
+                            if (i == fileMD.numChunks - 1 && prevMatchLength == word.length())
+                            {
+                                // adding the offset
+                                allOffsets.push_back(offset);
+                            }
                         }
                         else // SUFFIX case
                         {
@@ -1284,6 +1304,8 @@ void opSearchSS(map<int, string> &storedChunks)
 
     // sending last char of chunk
     int chunkSize = chunkContent.length();
+    if (chunkSize == CHUNK_SIZE + 1)
+        chunkSize--;
     char lastChar = chunkContent[chunkSize - 1];
     // char lastChar = chunkContent[CHUNK_SIZE - 1];
     MPI_Send(&lastChar, 1, MPI_CHAR, 0, SEARCH_REQUEST, MPI_COMM_WORLD);
@@ -1400,7 +1422,7 @@ pair<int, string> opListFileMS(string fileName, map<string, FileMetadata> &metad
         }
 
         // printing output
-        cout << startChunkID + i << " " << chunkActiveNodes.size() << " ";
+        cout << i << " " << chunkActiveNodes.size() << " ";
         for (int nodeRank : chunkActiveNodes)
         {
             cout << nodeRank << " ";
