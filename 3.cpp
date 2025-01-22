@@ -26,7 +26,7 @@ mutex hbMutex;
 // constants
 const int CHUNK_SIZE = 32;
 const int REPLICATION_FACTOR = 3;
-const int HEARTBEAT_INTERVAL = 2;
+const int HEARTBEAT_INTERVAL = 1;
 const int FAILURE_DETECTION_TIMEOUT = 3;
 
 // MESSAGE TAGS
@@ -683,7 +683,10 @@ pair<int, string> opUploadMS(long long int &lastChunkID, string fileName, string
             MPI_Send(&lastChunkID, 1, MPI_LONG_LONG, nodeRank, UPLOAD_REQUEST, MPI_COMM_WORLD);
 
             // sending chunk data
-            MPI_Send(chunk.c_str(), CHUNK_SIZE, MPI_CHAR, nodeRank, CHUNK_DATA, MPI_COMM_WORLD);
+            int chunkSize = chunk.length();
+            MPI_Send(&chunkSize, 1, MPI_INT, nodeRank, CHUNK_DATA, MPI_COMM_WORLD);
+            MPI_Send(chunk.c_str(), chunkSize, MPI_CHAR, nodeRank, CHUNK_DATA, MPI_COMM_WORLD);
+            // MPI_Send(chunk.c_str(), CHUNK_SIZE, MPI_CHAR, nodeRank, CHUNK_DATA, MPI_COMM_WORLD);
 
             // incrementing load
             loads[j].first++;
@@ -703,13 +706,19 @@ void opUploadSS(map<int, string> &storedChunks)
 {
     // creating variables
     char buffer[CHUNK_SIZE];
+    memset(buffer, 0, CHUNK_SIZE);
     long long int chunkID;
 
     // receiving chunk ID
     MPI_Recv(&chunkID, 1, MPI_LONG_LONG, 0, UPLOAD_REQUEST, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
     // receiving chunk data
-    MPI_Recv(buffer, CHUNK_SIZE, MPI_CHAR, 0, CHUNK_DATA, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    int chunkSize;
+    MPI_Recv(&chunkSize, 1, MPI_INT, 0, CHUNK_DATA, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    MPI_Recv(buffer, chunkSize, MPI_CHAR, 0, CHUNK_DATA, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    if (chunkSize < CHUNK_SIZE)
+        buffer[chunkSize] = '\0';
+    // MPI_Recv(buffer, CHUNK_SIZE, MPI_CHAR, 0, CHUNK_DATA, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
     // storing the chunk
     storedChunks[chunkID] = buffer;
@@ -721,6 +730,7 @@ pair<int, string> readFileInChunks(const string &fileName, const string &fileAdd
 {
     // opening the file with relative fileAddress
     ifstream file(fileAddress, ios::binary); // binary mode
+    // ifstream file(fileAddress); // text mode
     if (!file.is_open())
     {
         return {-1, "File not found"};
@@ -741,9 +751,12 @@ pair<int, string> readFileInChunks(const string &fileName, const string &fileAdd
         // reading the remaning bytes
         string lastChunk(buffer, bytesRead);
 
-        // padding with null
-        lastChunk += '\0';
-        lastChunk.append(32 - bytesRead - 1, '`');
+        // // padding with null + `
+        // lastChunk += '\0';
+        // lastChunk.append(32 - bytesRead - 1, '`');
+
+        // // padding with null
+        // lastChunk.append(32 - bytesRead, '\0');
 
         fileChunks.push_back(lastChunk);
     }
@@ -839,10 +852,17 @@ pair<int, string> opRetrieveMS(string fileName, map<string, FileMetadata> &metad
 
                 // receiving chunk data
                 char buffer[CHUNK_SIZE];
-                MPI_Recv(buffer, CHUNK_SIZE, MPI_CHAR, nodeRank, CHUNK_DATA, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                memset(buffer, 0, CHUNK_SIZE);
+                int chunkSize;
+                MPI_Recv(&chunkSize, 1, MPI_INT, nodeRank, CHUNK_DATA, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                MPI_Recv(buffer, chunkSize, MPI_CHAR, nodeRank, CHUNK_DATA, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                if (chunkSize < CHUNK_SIZE)
+                    buffer[chunkSize] = '\0';
+                // MPI_Recv(buffer, CHUNK_SIZE, MPI_CHAR, nodeRank, CHUNK_DATA, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
                 // adding to file data
-                fileData.append(buffer, CHUNK_SIZE);
+                fileData.append(buffer, chunkSize);
+                // fileData.append(buffer, CHUNK_SIZE);
 
                 break;
             }
@@ -855,11 +875,15 @@ pair<int, string> opRetrieveMS(string fileName, map<string, FileMetadata> &metad
         }
     }
 
-    // reducing all useless characters from the end of the file
-    while (fileData.back() == '`')
-    {
-        fileData.pop_back();
-    }
+    // // reducing all useless characters from the end of the file
+    // while (fileData.back() == '`')
+    // {
+    //     fileData.pop_back();
+    // }
+    // while (fileData.back() == '\0')
+    // {
+    //     fileData.pop_back();
+    // }
 
     // // counting number of padded null characters at the end
     // int count = 0;
@@ -904,7 +928,12 @@ void opRetrieveSS(map<int, string> &storedChunks)
     MPI_Recv(&chunkID, 1, MPI_LONG_LONG, 0, DOWNLOAD_REQUEST, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
     // sending chunk data
-    MPI_Send(storedChunks[chunkID].c_str(), CHUNK_SIZE, MPI_CHAR, 0, CHUNK_DATA, MPI_COMM_WORLD);
+    int chunkSize = storedChunks[chunkID].length();
+    if (chunkSize == CHUNK_SIZE + 1)
+        chunkSize--;
+    MPI_Send(&chunkSize, 1, MPI_INT, 0, CHUNK_DATA, MPI_COMM_WORLD);
+    MPI_Send(storedChunks[chunkID].c_str(), chunkSize, MPI_CHAR, 0, CHUNK_DATA, MPI_COMM_WORLD);
+    // MPI_Send(storedChunks[chunkID].c_str(), CHUNK_SIZE, MPI_CHAR, 0, CHUNK_DATA, MPI_COMM_WORLD);
 }
 
 /*
@@ -980,7 +1009,7 @@ bool isCompleteMatch(const string &chunk, const string &word, size_t pos, char &
     }
 
     // also making sure that the word is ending after it
-    if (chunk[pos + word.length()] != '\0' && chunk[pos + word.length()] != '\n' && chunk[pos + word.length()] != ' ')
+    if (word.length() < CHUNK_SIZE && chunk[pos + word.length()] != '\0' && chunk[pos + word.length()] != '\n' && chunk[pos + word.length()] != ' ')
     {
         return false;
     }
@@ -994,7 +1023,7 @@ bool isCompleteMatch(const string &chunk, const string &word, size_t pos, char &
     {
         return true;
     }
-    
+
     return false;
 }
 
@@ -1254,7 +1283,9 @@ void opSearchSS(map<int, string> &storedChunks)
     vector<SearchResult> results = searchInChunk(chunkContent, word, chunkOffset, prevMatchLength, prevChunkLastChar);
 
     // sending last char of chunk
-    char lastChar = chunkContent[CHUNK_SIZE - 1];
+    int chunkSize = chunkContent.length();
+    char lastChar = chunkContent[chunkSize - 1];
+    // char lastChar = chunkContent[CHUNK_SIZE - 1];
     MPI_Send(&lastChar, 1, MPI_CHAR, 0, SEARCH_REQUEST, MPI_COMM_WORLD);
 
     // sending size of search results
@@ -1424,14 +1455,14 @@ pair<int, string> opListFileMS(string fileName, map<string, FileMetadata> &metad
 // MAIN
 signed main(int argc, char *argv[])
 {
-    // redirecting all the output
-    ofstream outFile("out.txt", ios::out);
-    if (!outFile)
-    {
-        cerr << "Error opening file!" << endl;
-        return 1;
-    }
-    streambuf *defaultCoutBuffer = cout.rdbuf(outFile.rdbuf());
+    // // redirecting all the output
+    // ofstream outFile("out.txt", ios::out);
+    // if (!outFile)
+    // {
+    //     cerr << "Error opening file!" << endl;
+    //     return 1;
+    // }
+    // streambuf *defaultCoutBuffer = cout.rdbuf(outFile.rdbuf());
 
     // MPI Start
     int provided;
@@ -1459,9 +1490,9 @@ signed main(int argc, char *argv[])
     // MPI End
     MPI_Finalize();
 
-    // redirecting all output back to std out
-    cout.rdbuf(defaultCoutBuffer);
-    outFile.close();
+    // // redirecting all output back to std out
+    // cout.rdbuf(defaultCoutBuffer);
+    // outFile.close();
 
     return 0;
 }
