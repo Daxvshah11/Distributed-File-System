@@ -49,7 +49,7 @@ struct FileMetadata
     string fileAddress;
     int numChunks;
     long long int startChunkID;
-    map<long long int, unordered_set<int>> chunkPositions; // chunkID : replicaNodes
+    map<long long int, set<int>> chunkPositions; // chunkID : replicaNodes
 };
 
 // STRUCT to hold SEARCH RESULTS
@@ -142,7 +142,7 @@ void monitorHeartbeats(unordered_map<int, chrono::time_point<chrono::steady_cloc
         {
             if (chrono::duration_cast<chrono::seconds>(now - it->second).count() > FAILURE_DETECTION_TIMEOUT)
             {
-                cout << "Node " << it->first << " : DOWN!" << endl;
+                // cout << "Node " << it->first << " : DOWN!" << endl;
                 it = heartbeatTimestamps.erase(it); // Remove the node from the map
             }
             else
@@ -252,9 +252,6 @@ void thread_sendHBWrapper(bool &isRunning)
 // processing metadata server
 void processMetadataServer(int numProcesses)
 {
-    // getting PID
-    cout << "Metadata Server ROOT PID: " << getpid() << endl;
-
     // Heartbeat Storage
     unordered_map<int, chrono::time_point<chrono::steady_clock>> heartbeatTimestamps; // (nodeRank, timestamp)
     bool isRunning = true;
@@ -305,8 +302,7 @@ void processMetadataServer(int numProcesses)
             iss >> temp;
             if (!temp.empty())
             {
-                cout << -1 << " : Invalid command\n"
-                     << endl;
+                cout << -1 << endl;
                 continue;
             }
 
@@ -334,13 +330,13 @@ void processMetadataServer(int numProcesses)
             // checking correct inputs
             if (fileName.empty() || fileAddress.empty() || !temp.empty())
             {
-                cout << -1 << " : Invalid command" << endl;
+                cout << -1 << endl;
                 continue;
             }
 
             // handling the op
             pair<int, string> retVal = opUploadMS(lastChunkID, fileName, fileAddress, metadata, activeNodes, loadPerChunk);
-            cout << retVal.first << " : " << retVal.second << endl;
+            cout << retVal.first << endl;
 
             // listing file if uploaded successfully
             if (retVal.first == 1)
@@ -359,14 +355,14 @@ void processMetadataServer(int numProcesses)
             // checking correct inputs
             if (fileName.empty() || !temp.empty())
             {
-                cout << -1 << " : Invalid command" << endl;
+                cout << -1 << endl;
                 continue;
             }
 
             // handling the op
             pair<int, string> retVal = opRetrieveMS(fileName, metadata, activeNodes);
             if (retVal.first == -1)
-                cout << retVal.first << " : " << retVal.second << endl;
+                cout << retVal.first << endl;
             else
             {
                 printFileData(retVal.second);
@@ -387,7 +383,7 @@ void processMetadataServer(int numProcesses)
             // checking correct inputs
             if (fileName.empty() || word.empty() || !temp.empty())
             {
-                cout << -1 << " : Invalid command" << endl;
+                cout << -1 << endl;
                 continue;
             }
 
@@ -395,7 +391,7 @@ void processMetadataServer(int numProcesses)
             pair<int, string> retVal = opSearchMS(fileName, word, metadata, activeNodes);
             if (retVal.first == -1)
             {
-                cout << retVal.first << " : " << retVal.second << endl;
+                cout << retVal.first << endl;
             }
         }
         else if (operation == "list_file")
@@ -410,7 +406,7 @@ void processMetadataServer(int numProcesses)
             // if no fileName is entered then error
             if (fileName.empty() || !temp.empty())
             {
-                cout << -1 << " : Invalid command" << endl;
+                cout << -1 << endl;
                 continue;
             }
 
@@ -418,7 +414,7 @@ void processMetadataServer(int numProcesses)
             pair<int, string> retVal = opListFileMS(fileName, metadata, activeNodes);
             if (retVal.first == -1)
             {
-                cout << retVal.first << " : " << retVal.second << endl;
+                cout << retVal.first << endl;
             }
         }
         else if (operation == "failover")
@@ -433,17 +429,17 @@ void processMetadataServer(int numProcesses)
             // checking correct inputs
             if (!temp.empty())
             {
-                cout << -1 << " : Invalid command" << endl;
+                cout << -1 << endl;
                 continue;
             }
             if (nodeRank <= 0 || nodeRank >= numProcesses)
             {
-                cout << -1 << " : Node Rank out of Bounds" << endl;
+                cout << -1 << endl;
                 continue;
             }
             if (activeNodes.find(nodeRank) == activeNodes.end())
             {
-                cout << -1 << " : Node already Down" << endl;
+                cout << -1 << endl;
                 continue;
             }
 
@@ -453,7 +449,7 @@ void processMetadataServer(int numProcesses)
             // updating active nodes
             activeNodes.erase(nodeRank);
 
-            cout << 1 << " : Node Failover successful" << endl;
+            cout << 1 << endl;
         }
         else if (operation == "recover")
         {
@@ -467,17 +463,17 @@ void processMetadataServer(int numProcesses)
             // checking correct inputs
             if (!temp.empty())
             {
-                cout << -1 << " : Invalid command" << endl;
+                cout << -1 << endl;
                 continue;
             }
             if (nodeRank <= 0 || nodeRank >= numProcesses)
             {
-                cout << -1 << " : Node Rank out of Bounds" << endl;
+                cout << -1 << endl;
                 continue;
             }
             if (activeNodes.find(nodeRank) != activeNodes.end())
             {
-                cout << -1 << " : Node already Active" << endl;
+                cout << -1 << endl;
                 continue;
             }
 
@@ -487,11 +483,11 @@ void processMetadataServer(int numProcesses)
             // updating active nodes
             activeNodes.insert(nodeRank);
 
-            cout << 1 << " : Node Recovery successful" << endl;
+            cout << 1 << endl;
         }
         else
         {
-            cout << -1 << " : Invalid command" << endl;
+            cout << -1 << endl;
         }
     }
 
@@ -508,9 +504,6 @@ void processMetadataServer(int numProcesses)
 // processing storage node
 void processStorageNode(int myRank)
 {
-    // getting PID of the process
-    cout << "Process rank " << myRank << " has PID: " << getpid() << endl;
-
     // storage for chunks
     map<int, string> storedChunks;
     bool isRunning = true;
@@ -661,7 +654,7 @@ pair<int, string> opUploadMS(long long int &lastChunkID, string fileName, string
 
         // getting replica nodes
         int totalReplicaNodes = min(REPLICATION_FACTOR, static_cast<int>(activeNodes.size()));
-        unordered_set<int> replicaNodes;
+        set<int> replicaNodes;
         vector<pair<int, int>> loads(totalReplicaNodes);
         pair<int, int> tempPair;
         for (int j = 0; j < totalReplicaNodes; j++)
@@ -749,7 +742,8 @@ pair<int, string> readFileInChunks(const string &fileName, const string &fileAdd
         string lastChunk(buffer, bytesRead);
 
         // padding with null
-        lastChunk.append(32 - bytesRead, '\0');
+        lastChunk += '\0';
+        lastChunk.append(32 - bytesRead - 1, '`');
 
         fileChunks.push_back(lastChunk);
     }
@@ -861,6 +855,45 @@ pair<int, string> opRetrieveMS(string fileName, map<string, FileMetadata> &metad
         }
     }
 
+    // reducing all useless characters from the end of the file
+    while (fileData.back() == '`')
+    {
+        fileData.pop_back();
+    }
+
+    // // counting number of padded null characters at the end
+    // int count = 0;
+    // for (int i = fileData.length() - 1; i >= 0; i--)
+    // {
+    //     if (fileData[i] == '\0')
+    //     {
+    //         count++;
+    //     }
+    //     else
+    //     {
+    //         break;
+    //     }
+    // }
+    // cout << "Null Count " << count << endl;
+
+    // // printing last character of the file
+    // if (fileData[fileData.length() - 1] == '\0')
+    // {
+    //     cout << "Its a null character" << endl;
+    // }
+    // else if (fileData[fileData.length() - 1] == '\n')
+    // {
+    //     cout << "Its a new line character" << endl;
+    // }
+    // else if (fileData[fileData.length() - 1] == ' ')
+    // {
+    //     cout << "Its a space character" << endl;
+    // }
+    // else
+    // {
+    //     cout << "Its a valid character" << endl;
+    // }
+
     return {1, fileData};
 }
 
@@ -939,7 +972,7 @@ bool isCompleteMatch(const string &chunk, const string &word, size_t pos, char &
     }
     else if (pos == 0)
     {
-        // checking if end byte of the previous chunk is not a valid letter
+        // checking with last character of the previous chunk
         if (prevChunkLastChar != '\0' && prevChunkLastChar != '\n' && prevChunkLastChar != ' ')
         {
             return false;
@@ -961,7 +994,7 @@ bool isCompleteMatch(const string &chunk, const string &word, size_t pos, char &
     {
         return true;
     }
-
+    
     return false;
 }
 
@@ -983,11 +1016,20 @@ bool isPrefixMatch(const string &chunk, const string &word, size_t pos)
 
 bool isSuffixMatch(const string &chunk, const string &word, int prevMatchLength)
 {
-    if (prevMatchLength >= word.length())
+    if (prevMatchLength > word.length())
         return false;
     size_t remainingLength = word.length() - prevMatchLength;
     if (remainingLength > chunk.length())
         return false;
+    if (remainingLength == 0)
+    {
+        // check if the first character of chunk is a valid character
+        if (chunk[0] == '\0' || chunk[0] == '\n' || chunk[0] == ' ')
+        {
+            return true;
+        }
+        return false;
+    }
     string temp1 = chunk.substr(0, remainingLength);
     temp1 += '\0';
     string temp2 = word.substr(prevMatchLength, remainingLength);
@@ -1382,6 +1424,15 @@ pair<int, string> opListFileMS(string fileName, map<string, FileMetadata> &metad
 // MAIN
 signed main(int argc, char *argv[])
 {
+    // redirecting all the output
+    ofstream outFile("out.txt", ios::out);
+    if (!outFile)
+    {
+        cerr << "Error opening file!" << endl;
+        return 1;
+    }
+    streambuf *defaultCoutBuffer = cout.rdbuf(outFile.rdbuf());
+
     // MPI Start
     int provided;
     MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
@@ -1407,6 +1458,10 @@ signed main(int argc, char *argv[])
 
     // MPI End
     MPI_Finalize();
+
+    // redirecting all output back to std out
+    cout.rdbuf(defaultCoutBuffer);
+    outFile.close();
 
     return 0;
 }
