@@ -1002,7 +1002,7 @@ void opRetrieveSS(map<int, string> &storedChunks)
 
 bool isCompleteMatch(const string &chunk, const string &word, size_t pos, char &prevChunkLastChar)
 {
-    if (pos + word.length() > chunk.length())
+    if (pos + word.length() >= chunk.length())
         return false;
 
     // forming words
@@ -1010,7 +1010,7 @@ bool isCompleteMatch(const string &chunk, const string &word, size_t pos, char &
     for (size_t i = 0; i < word.length(); i++)
     {
         // checking if word ends
-        if (chunk[pos + i] == '\0' || chunk[pos + i] == '\n' || chunk[pos + i] == ' ')
+        if (chunk[pos + i] == '\0' || chunk[pos + i] == '\n' || chunk[pos + i] == ' ' || chunk[pos + i] == '\t')
         {
             break;
         }
@@ -1018,21 +1018,21 @@ bool isCompleteMatch(const string &chunk, const string &word, size_t pos, char &
     }
 
     // also making sure that the word begins exactly from pos
-    if (pos > 0 && chunk[pos - 1] != '\0' && chunk[pos - 1] != '\n' && chunk[pos - 1] != ' ')
+    if (pos > 0 && chunk[pos - 1] != '\0' && chunk[pos - 1] != '\n' && chunk[pos - 1] != ' ' && chunk[pos - 1] != '\t')
     {
         return false;
     }
     else if (pos == 0)
     {
         // checking with last character of the previous chunk
-        if (prevChunkLastChar != '\0' && prevChunkLastChar != '\n' && prevChunkLastChar != ' ')
+        if (prevChunkLastChar != '\0' && prevChunkLastChar != '\n' && prevChunkLastChar != ' ' && prevChunkLastChar != '\t')
         {
             return false;
         }
     }
 
     // also making sure that the word is ending after it
-    if ((word.length() < CHUNK_SIZE) && chunk[pos + word.length()] != '\0' && chunk[pos + word.length()] != '\n' && chunk[pos + word.length()] != ' ')
+    if ((word.length() < CHUNK_SIZE) && chunk[pos + word.length()] != '\0' && chunk[pos + word.length()] != '\n' && chunk[pos + word.length()] != ' ' && chunk[pos + word.length()] != '\t')
     {
         return false;
     }
@@ -1068,7 +1068,7 @@ bool isPrefixMatch(const string &chunk, const string &word, size_t pos)
     size_t remainingChars = chunkSize - pos;
 
     // checking if words starts from correct position as a separate word
-    if (chunk[pos - 1] != '\0' && chunk[pos - 1] != '\n' && chunk[pos - 1] != ' ')
+    if (chunk[pos - 1] != '\0' && chunk[pos - 1] != '\n' && chunk[pos - 1] != ' ' && chunk[pos - 1] != '\t')
     {
         return false;
     }
@@ -1094,7 +1094,7 @@ bool isSuffixMatch(const string &chunk, const string &word, int prevMatchLength)
     if (remainingLength == 0)
     {
         // check if the first character of chunk is a valid character
-        if (chunk[0] == '\0' || chunk[0] == '\n' || chunk[0] == ' ')
+        if (chunk[0] == '\0' || chunk[0] == '\n' || chunk[0] == ' ' || chunk[0] == '\t')
         {
             return true;
         }
@@ -1102,7 +1102,7 @@ bool isSuffixMatch(const string &chunk, const string &word, int prevMatchLength)
     }
 
     // checking if word ends in file after suffix length
-    if (chunk[remainingLength] != '\0' && chunk[remainingLength] != '\n' && chunk[remainingLength] != ' ')
+    if (chunk[remainingLength] != '\0' && chunk[remainingLength] != '\n' && chunk[remainingLength] != ' ' && chunk[remainingLength] != '\t')
     {
         return false;
     }
