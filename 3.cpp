@@ -91,6 +91,12 @@ void thread_receiveHBWrapper(int nodeRank, unordered_map<int, chrono::time_point
 void thread_sendHB(bool &isRunning);
 void thread_sendHBWrapper(bool &isRunning);
 
+string convertCharArrToString(char *arr, int arrSize)
+{
+    string str(arr, arrSize);
+    return str;
+}
+
 /*
 
 
@@ -634,6 +640,12 @@ pair<int, string> opUploadMS(long long int &lastChunkID, string fileName, string
         return {-1, "File already present in the system"};
     }
 
+    // checking if no Nodes are present
+    if (activeNodes.empty())
+    {
+        return {-1, "No active nodes present"};
+    }
+
     // chunking it
     vector<string> fileChunks;
     pair<int, string> retVal = readFileInChunks(fileName, fileAddress, fileChunks);
@@ -725,10 +737,12 @@ void opUploadSS(map<int, string> &storedChunks)
     MPI_Recv(buffer, chunkSize, MPI_CHAR, 0, CHUNK_DATA, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     if (chunkSize < CHUNK_SIZE)
         buffer[chunkSize] = '\0';
-    // MPI_Recv(buffer, CHUNK_SIZE, MPI_CHAR, 0, CHUNK_DATA, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+    // converting buffer to string
+    string chunkData = convertCharArrToString(buffer, chunkSize);
 
     // storing the chunk
-    storedChunks[chunkID] = buffer;
+    storedChunks[chunkID] = chunkData;
 
     return;
 }
@@ -867,9 +881,11 @@ pair<int, string> opRetrieveMS(string fileName, map<string, FileMetadata> &metad
                     buffer[chunkSize] = '\0';
                 // MPI_Recv(buffer, CHUNK_SIZE, MPI_CHAR, nodeRank, CHUNK_DATA, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
+                // converting buffer to string
+                string chunkData = convertCharArrToString(buffer, chunkSize);
+
                 // adding to file data
-                fileData.append(buffer, chunkSize);
-                // fileData.append(buffer, CHUNK_SIZE);
+                fileData.append(chunkData);
 
                 break;
             }
@@ -1038,10 +1054,25 @@ bool isPrefixMatch(const string &chunk, const string &word, size_t pos)
 {
     if (pos >= chunk.length())
         return false;
+
+    // checking if pos is 0
+    if (pos == 0)
+    {
+        // cant be PREFIX
+        return false;
+    }
+
     int chunkSize = chunk.length();
     if (chunkSize == CHUNK_SIZE + 1)
         chunkSize--;
     size_t remainingChars = chunkSize - pos;
+
+    // checking if words starts from correct position as a separate word
+    if (chunk[pos - 1] != '\0' && chunk[pos - 1] != '\n' && chunk[pos - 1] != ' ')
+    {
+        return false;
+    }
+
     string temp1 = chunk.substr(pos, remainingChars);
     temp1 += '\0';
     string temp2 = word.substr(0, remainingChars);
@@ -1069,6 +1100,13 @@ bool isSuffixMatch(const string &chunk, const string &word, int prevMatchLength)
         }
         return false;
     }
+
+    // checking if word ends in file after suffix length
+    if (chunk[remainingLength] != '\0' && chunk[remainingLength] != '\n' && chunk[remainingLength] != ' ')
+    {
+        return false;
+    }
+
     string temp1 = chunk.substr(0, remainingLength);
     temp1 += '\0';
     string temp2 = word.substr(prevMatchLength, remainingLength);
@@ -1130,7 +1168,7 @@ vector<SearchResult> searchInChunk(const string &chunk, const string &searchWord
             SearchResult result = {
                 chunkOffset + static_cast<int>(i),
                 true,
-                static_cast<int>(chunk.length() - i - 1),
+                static_cast<int>(chunkSize - i),
                 true // it is the prefix part
             };
 
