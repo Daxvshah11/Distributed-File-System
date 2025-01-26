@@ -78,7 +78,7 @@ void printFileData(string fileData);
 pair<int, string> readFileInChunks(const string &fileName, const string &fileAddress, vector<string> &fileChunks);
 pair<int, vector<size_t>> findWordOccurrences(const string &chunkContent, int chunkOffset, const string &word);
 bool isCompleteMatch(const string &chunk, const string &word, size_t pos);
-bool isPrefixMatch(const string &chunk, const string &word, size_t pos);
+bool isPrefixMatch(const string &chunk, const string &word, size_t pos, char &prevChunkLastChar);
 bool isSuffixMatch(const string &chunk, const string &word, int prevMatchLength);
 vector<SearchResult> searchInChunk(const string &chunk, const string &searchWord, const int &chunkOffset, int &prevMatchLength);
 
@@ -1050,17 +1050,10 @@ bool isCompleteMatch(const string &chunk, const string &word, size_t pos, char &
     return false;
 }
 
-bool isPrefixMatch(const string &chunk, const string &word, size_t pos)
+bool isPrefixMatch(const string &chunk, const string &word, size_t pos, char &prevChunkLastChar)
 {
     if (pos >= chunk.length())
         return false;
-
-    // checking if pos is 0
-    if (pos == 0)
-    {
-        // cant be PREFIX
-        return false;
-    }
 
     int chunkSize = chunk.length();
     if (chunkSize == CHUNK_SIZE + 1)
@@ -1068,7 +1061,11 @@ bool isPrefixMatch(const string &chunk, const string &word, size_t pos)
     size_t remainingChars = chunkSize - pos;
 
     // checking if words starts from correct position as a separate word
-    if (chunk[pos - 1] != '\0' && chunk[pos - 1] != '\n' && chunk[pos - 1] != ' ' && chunk[pos - 1] != '\t')
+    if (pos > 0 && chunk[pos - 1] != '\0' && chunk[pos - 1] != '\n' && chunk[pos - 1] != ' ' && chunk[pos - 1] != '\t')
+    {
+        return false;
+    }
+    else if (pos == 0 && prevChunkLastChar != '\0' && prevChunkLastChar != '\n' && prevChunkLastChar != ' ' && prevChunkLastChar != '\t')
     {
         return false;
     }
@@ -1162,7 +1159,7 @@ vector<SearchResult> searchInChunk(const string &chunk, const string &searchWord
 
             results.push_back(result);
         }
-        else if (isPrefixMatch(chunk, searchWord, i))
+        else if (isPrefixMatch(chunk, searchWord, i, prevChunkLastChar))
         {
             // partial match at boundary as prefix
             SearchResult result = {
